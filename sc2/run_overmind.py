@@ -17,7 +17,7 @@ from sc2.position import Point2, Point3
 
 # inhereits from BotAI (part of BurnySC2)
 class Overmind(BotAI):
-    MAX_OVERLORDS = 10
+    MAX_OVERLORDS = 12
     MAX_DRONES    = 100 
     async def on_step(self, iteration: int):
         #print(f"This is my bot in iteration {iteration}, workers: {self.workers}, idle workers: {self.workers.idle}, supply: {self.supply_used}/{self.supply_cap}")

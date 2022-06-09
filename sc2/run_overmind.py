@@ -17,8 +17,11 @@ from sc2.position import Point2, Point3
 
 # inhereits from BotAI (part of BurnySC2)
 class Overmind(BotAI):
-    MAX_OVERLORDS = 12
-    MAX_DRONES    = 100 
+    MAX_OVERLORDS = 14
+    MAX_DRONES    = 80
+    MIN_DRONES    = 20
+    MAX_DEF_SPINECRAWLERS = 2
+
     async def on_step(self, iteration: int):
         #print(f"This is my bot in iteration {iteration}, workers: {self.workers}, idle workers: {self.workers.idle}, supply: {self.supply_used}/{self.supply_cap}")
         # print(f"{iteration}")
@@ -33,6 +36,20 @@ class Overmind(BotAI):
         await self.make_queens()
         await self.inject_hatchery()
         await self.distribute_overlords()
+        await self.make_spinecrawlers()
+
+    async def make_spinecrawlers(self):
+        if self.units(UnitTypeId.DRONE).amount > self.MIN_DRONES:
+            hatcherys = self.townhalls
+            for hatchery in hatcherys:
+                #print(f"close spinecrawlers: {self.structures(UnitTypeId.SPINECRAWLER).closer_than(10, hatchery.position.to2).amount} pending: {self.already_pending(UnitTypeId.SPINECRAWLER)}")
+                #print(f"pos {hatchery.position} pos2 {hatchery.position.to2} pos3 {hatchery.position.to3}")
+                print(f"if {self.structures(UnitTypeId.SPINECRAWLER).closer_than(10,hatchery.position.to2).amount} <= {self.MAX_DEF_SPINECRAWLERS}")
+                if self.structures(UnitTypeId.SPINECRAWLER).closer_than(10, hatchery.position.to2).amount < self.MAX_DEF_SPINECRAWLERS:
+                    pos = await self.find_placement(UnitTypeId.SPINECRAWLER,hatchery.position.to2,max_distance=10)
+                    drone = self.workers.closest_to(hatchery)
+                    if self.can_afford(UnitTypeId.SPINECRAWLER):
+                        drone.build(UnitTypeId.SPINECRAWLER, pos)
 
     async def inject_hatchery(self):
         if self.units(UnitTypeId.QUEEN).exists:
@@ -118,12 +135,12 @@ class Overmind(BotAI):
                     drone.build(UnitTypeId.SPAWNINGPOOL, pos)
 
     async def make_overlords(self):
-        print(f"ovlamount {self.units(UnitTypeId.OVERLORD).amount} max_overlords {self.MAX_OVERLORDS}")
+        #print(f"ovlamount {self.units(UnitTypeId.OVERLORD).amount} max_overlords {self.MAX_OVERLORDS} overlordpending: {self.already_pending(UnitTypeId.OVERLORD)}")
         if (
             self.supply_left < 3
             and self.can_afford(UnitTypeId.OVERLORD)
             and self.units(UnitTypeId.LARVA).exists
-            and self.units(UnitTypeId.OVERLORD).amount < self.MAX_OVERLORDS #Mental Note - Count Pending Overlords
+            and self.units(UnitTypeId.OVERLORD).amount + self.already_pending(UnitTypeId.OVERLORD) < self.MAX_OVERLORDS
         ):
             self.units(UnitTypeId.LARVA).random.train(UnitTypeId.OVERLORD)
 
@@ -144,3 +161,9 @@ run_game(                                   # run_game is a function that runs t
     # When set to True, the agent is limited in how long each step can take to process.
     realtime=False,
 )
+
+# Don't make multiple overlords even if supply is low because you make 3 immediately in the beginning uncessisarily
+# do like.... up to 1 per base or something
+
+# Issue with all the drones immediately running to the second base to make spinecrawlers, but then they make like 10
+# because they've already been ordered to - figure out how to fix

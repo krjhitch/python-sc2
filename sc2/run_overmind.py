@@ -15,12 +15,23 @@ import numpy as np
 from sc2.unit import Unit
 from sc2.position import Point2, Point3
 
+MAP_POOL = [
+        '2000AtmospheresAIE',
+        'BlackburnAIE',
+        'JagannathaAIE',
+        'LightshadeAIE',
+        'OxideAIE',
+        'RomanticidieAIE'
+] 
+
+
 # inhereits from BotAI (part of BurnySC2)
 class Overmind(BotAI):
     MAX_OVERLORDS = 14
     MAX_DRONES    = 80
     MIN_DRONES    = 20
     MAX_DEF_SPINECRAWLERS = 2
+    MIN_FREE_SUPPLY = 4
 
     async def on_step(self, iteration: int):
         #print(f"This is my bot in iteration {iteration}, workers: {self.workers}, idle workers: {self.workers.idle}, supply: {self.supply_used}/{self.supply_cap}")
@@ -137,10 +148,11 @@ class Overmind(BotAI):
     async def make_overlords(self):
         #print(f"ovlamount {self.units(UnitTypeId.OVERLORD).amount} max_overlords {self.MAX_OVERLORDS} overlordpending: {self.already_pending(UnitTypeId.OVERLORD)}")
         if (
-            self.supply_left < 3
+            self.supply_left < self.MIN_FREE_SUPPLY
             and self.can_afford(UnitTypeId.OVERLORD)
             and self.units(UnitTypeId.LARVA).exists
             and self.units(UnitTypeId.OVERLORD).amount + self.already_pending(UnitTypeId.OVERLORD) < self.MAX_OVERLORDS
+            and self.already_pending(UnitTypeId.OVERLORD) < self.townhalls.ready.amount
         ):
             self.units(UnitTypeId.LARVA).random.train(UnitTypeId.OVERLORD)
 
@@ -154,8 +166,9 @@ class Overmind(BotAI):
             self.units(UnitTypeId.LARVA).random.train(UnitTypeId.DRONE)
 
 
-run_game(                                   # run_game is a function that runs the game.
-    maps.get("2000AtmospheresAIE"),         # the map we are playing on
+run_game(   
+    # run_game is a function that runs the game.
+    maps.get(random.choice(MAP_POOL)),         # the map we are playing on
     [Bot(Race.Zerg, Overmind()),       # runs our coded bot, protoss race, and we pass our bot object
      Computer(Race.Terran, Difficulty.Easy)],  # runs a pre-made computer agent, zerg race, with a hard difficulty.
     # When set to True, the agent is limited in how long each step can take to process.
@@ -167,3 +180,8 @@ run_game(                                   # run_game is a function that runs t
 
 # Issue with all the drones immediately running to the second base to make spinecrawlers, but then they make like 10
 # because they've already been ordered to - figure out how to fix
+
+#seems to go over 80 drones
+
+# needs better logic to have 2 drones per patch.  Does seem to be in .resources per hatchery keeps track of optimal number
+# can use that to figure out if to take a new base

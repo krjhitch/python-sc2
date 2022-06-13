@@ -11,11 +11,15 @@ from sc2.player import Bot, Computer
 from sc2 import maps
 from sc2.ids.unit_typeid import UnitTypeId  # Contains unitTypeIds
 from sc2.ids.ability_id import AbilityId
+from sc2.ids.buff_id import BuffId
 import random
 import numpy as np
+import math
 from sc2.unit import Unit
 from sc2.units import Units
 from sc2.position import Point2, Point3
+from game_data import GameData
+
 
 MAP_POOL = [
     '2000AtmospheresAIE',
@@ -35,6 +39,7 @@ class Overmind(BotAI):
     MAX_DEF_SPINECRAWLERS = 2
     MIN_FREE_SUPPLY = 4
     SAVING_MINERALS = False
+    SPREAD_DISTANCE = 2
 
     async def on_step(self, iteration: int):
         #print(f"This is my bot in iteration {iteration}, workers: {self.workers}, idle workers: {self.workers.idle}, supply: {self.supply_used}/{self.supply_cap}")
@@ -61,6 +66,44 @@ class Overmind(BotAI):
         await self.upgrade_melee_attack1()
         await self.upgrade_ground_armor1()
         await self.upgrade_overlord_speed()
+        await self.distribute_creep_tumors()
+
+    async def distribute_creep_tumors(self):
+        queens = self.units(UnitTypeId.QUEEN)
+        for queen in queens.ready:
+            if queen.energy >= 25:
+                
+                #validPlacements = await self._client.query_building_placement(ability, positions)
+
+                local_hatchery = self.townhalls.closest_to(queen)
+                print(f"queen: {queen}, energy: {queen.energy} hatchery: {local_hatchery}")
+                if (
+                    local_hatchery.has_buff(BuffId.QUEENSPAWNLARVATIMER)
+                ):
+                    #pos = await self.find_placement(UnitTypeId.CREEPTUMOR, queen.position, max_distance=5)
+                    locationAttempts = 30
+                    ability = self.game_data.abilities[AbilityId.BUILD_CREEPTUMOR_QUEEN.value]
+                    #ability = self.game_data.units[CREEPTUMORQUEEN.value].creation_ability
+                    location = queen.position.as_Point2D
+                    positions = [Point2((location.x + self.SPREAD_DISTANCE * math.cos(math.pi * alpha * 2 / locationAttempts), location.y + self.SPREAD_DISTANCE * math.sin(math.pi * alpha * 2 / locationAttempts))) for alpha in range(locationAttempts)]
+                    
+                    validPlacements = await self._client.query_building_placement(ability, positions)
+                    if validPlacements:
+                        print(f"{validPlacements}")
+                        for placement in validPlacements:
+                            self.do(queen(AbilityId.BUILD_CREEPTUMOR_QUEEN), placement)
+                    #result = queen(AbilityId.BUILD_CREEPTUMOR_QUEEN, pos)
+                    #result = queen.build(UnitTypeId.CREEPTUMORQUEEN, pos)
+                    #print(f"result: {result}, pos {pos}")
+        
+        tumors = self.units(UnitTypeId.CREEPTUMOR)
+        for tumor in tumors:
+            if (
+                tumor.is_ready
+            ):
+                pos = await self.find_placement(UnitTypeId.CREEPTUMOR, tumor.position.to2, max_distance=10,random_alternative=True)
+                tumor(AbilityId.BUILD_CREEPTUMOR_TUMOR, pos)
+            
     
     async def upgrade_overlord_speed(self):
         if (
@@ -88,6 +131,7 @@ class Overmind(BotAI):
     async def make_evolution_chamber(self):
         if (
             self.can_afford(UnitTypeId.EVOLUTIONCHAMBER)
+            and self.can_afford(UpgradeId.ZERGLINGATTACKSPEED)
             and not self.structures(UnitTypeId.EVOLUTIONCHAMBER).exists
             and self.structures(UnitTypeId.SPAWNINGPOOL).exists
             and self.townhalls.amount >= 1
@@ -165,13 +209,13 @@ class Overmind(BotAI):
         if self.units(UnitTypeId.QUEEN).exists:
             hatcherys = self.townhalls
             for hatchery in hatcherys:
-                closest_queen = self.units(
-                    UnitTypeId.QUEEN).closest_to(hatchery)
-                if (
-                    closest_queen.is_idle
-                    and closest_queen.energy > 25
-                ):
-                    closest_queen(AbilityId.EFFECT_INJECTLARVA, hatchery)
+                if not hatchery.has_buff(BuffId.QUEENSPAWNLARVATIMER):
+                    closest_queen = self.units(UnitTypeId.QUEEN).closest_to(hatchery)
+                    if (
+                        closest_queen.is_idle
+                        and closest_queen.energy > 25
+                    ):
+                        closest_queen(AbilityId.EFFECT_INJECTLARVA, hatchery)
 
     async def distribute_overlords(self):
         # self.draw_creep_pixelmap()
@@ -203,7 +247,7 @@ class Overmind(BotAI):
         #print(f"Queens: {self.units(UnitTypeId.QUEEN).amount}, Bases: {self.structures(UnitTypeId.HATCHERY).amount}")
         if (
             self.can_afford(UnitTypeId.QUEEN)
-            and self.units(UnitTypeId.QUEEN).amount < self.structures(UnitTypeId.HATCHERY).amount
+            and self.units(UnitTypeId.QUEEN).amount < self.structures(UnitTypeId.HATCHERY).amount * 2
             and not self.already_pending(UnitTypeId.QUEEN) > 0
         ):
             self.townhalls.random.build(UnitTypeId.QUEEN)
@@ -273,7 +317,7 @@ run_game(
     [Bot(Race.Zerg, Overmind()),       # runs our coded bot, protoss race, and we pass our bot object
      Computer(Race.Terran, Difficulty.Medium)],  # runs a pre-made computer agent, zerg race, with a hard difficulty.
     # When set to True, the agent is limited in how long each step can take to process.
-    realtime=True,
+    realtime=False,
 )
 
 # Don't make multiple overlords even if supply is low because you make 3 immediately in the beginning uncessisarily
@@ -292,3 +336,7 @@ run_game(
 # do spinecrawlers
 
 # when grabbing random worker, try to avoid having worker have a resource on him
+
+# the issue with find.placement is that creep tumors aren't buildings, so pos returns None and you can't do anything
+
+# top priority is getting the queens list of valid tumor locations to be valid intead of <ActionResult.NotSupported>
